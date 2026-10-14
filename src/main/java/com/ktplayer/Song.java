@@ -7,7 +7,7 @@ public class Song {
     private StringProperty id;
     private StringProperty artistName;
     private StringProperty songName;
-    private StringProperty length;
+    private StringProperty size;
     private StringProperty duration;
     private StringProperty album;
     private StringProperty url;
@@ -19,11 +19,11 @@ public class Song {
         this.url = new SimpleStringProperty(url);
     }
 
-    public Song(String id, String artistName, String songName, String length, String duration, String album, String url) {
+    public Song(String id, String artistName, String songName, String size, String duration, String album, String url) {
         this.id = new SimpleStringProperty(id);
         this.artistName = new SimpleStringProperty(artistName);
         this.songName = new SimpleStringProperty(songName);
-        this.length = new SimpleStringProperty(length);
+        this.size = new SimpleStringProperty(size);
         this.duration = new SimpleStringProperty(duration);
         this.album = new SimpleStringProperty(album);
         this.url = new SimpleStringProperty(url);
@@ -65,40 +65,40 @@ public class Song {
         return songName;
     }
 
+    public String getSize() {
+        return size.get();
+    }
+
+    public void setSize(String size) {
+        this.size.set(size);
+    }
+
+    public StringProperty sizeProperty() {
+        return size;
+    }
+
     public String getDuration() {
-        return length.get();
-    }
-
-    public void setDuration(String duration) {
-        this.length.set(duration);
-    }
-
-    public StringProperty durationProperty() {
-        return length;
-    }
-
-    public String getRate() {
         return duration.get();
     }
 
-    public StringProperty rateProperty() {
+    public StringProperty durationProperty() {
         return duration;
     }
 
-    public void setRate(String rate) {
-        this.duration.set(rate);
+    public void setDuration(String duration) {
+        this.duration.set(duration);
     }
 
-    public String getFormat() {
+    public String getAlbum() {
         return album.get();
     }
 
-    public StringProperty formatProperty() {
+    public StringProperty albumProperty() {
         return album;
     }
 
-    public void setFormat(String format) {
-        this.album.set(format);
+    public void setAlbum(String album) {
+        this.album.set(album);
     }
 
     public String getUrl() {
@@ -121,4 +121,3 @@ public class Song {
         this.image = image;
     }
 }
-

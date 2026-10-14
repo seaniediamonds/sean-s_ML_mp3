@@ -3,17 +3,10 @@ package com.ktplayer;
 import com.jfoenix.controls.JFXSlider;
 import com.mpatric.mp3agic.*;
 import javafx.animation.FadeTransition;
-import javafx.application.Platform;
-import javafx.beans.InvalidationListener;
-import javafx.beans.Observable;
 import javafx.beans.binding.Bindings;
-import javafx.beans.value.ChangeListener;
-import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
-import javafx.event.EventHandler;
 import javafx.fxml.FXML;
-import javafx.geometry.Bounds;
 import javafx.scene.control.*;
 import javafx.scene.control.Label;
 import javafx.scene.image.Image;
@@ -21,19 +14,16 @@ import javafx.scene.image.ImageView;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.*;
 import javafx.scene.media.Media;
+import javafx.scene.media.MediaException;
 import javafx.scene.media.MediaPlayer;
-import javafx.scene.media.MediaView;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Stage;
 import javafx.util.Duration;
-import javafx.scene.media.MediaPlayer.Status;
 
+import javax.sound.sampled.AudioFileFormat;
+import javax.sound.sampled.AudioSystem;
 import java.io.File;
-import java.io.IOException;
-import java.net.URL;
 import java.text.DecimalFormat;
-import java.util.ArrayList;
-import java.util.List;
 
 
 public class Controller {
@@ -62,11 +52,11 @@ public class Controller {
     @FXML
     private TableColumn<Song, String> songNameColumn;
     @FXML
+    private TableColumn<Song, String> sizeColumn;
+    @FXML
     private TableColumn<Song, String> durationColumn;
     @FXML
-    private TableColumn<Song, String> rateColumn;
-    @FXML
-    private TableColumn<Song, String> formatColumn;
+    private TableColumn<Song, String> albumColumn;
 
 
     @FXML
@@ -108,18 +98,16 @@ public class Controller {
     private ToggleButton autoPlayIcon;
 
 
-    @FXML
     private Stage stage;
 
     private Main main;
 
-    private List<MediaPlayer> players;
+    private ObservableList<Song> songs = FXCollections.observableArrayList();
     private MediaPlayer mediaPlayer;
-    private MediaView mediaView;
+    private int currentIndex = -1;
 
-    private boolean isAutoplay;
-    private double volume = 10;
-    private String path;
+    private boolean isRepeat;
+    private double volume = 0.1;
 
     private double xOffset = 0;
     private double yOffset = 0;
@@ -129,113 +117,123 @@ public class Controller {
 
 
     public Controller() {
-        players = new ArrayList<>();
-        songSlider = new JFXSlider();
-        isAutoplay = false;
-        volume = 0.1;
+        isRepeat = false;
         stage = Main.getStage();
         stage.getIcons().add(new Image(ClassLoader.getSystemResource("images/logo.png").toExternalForm()));
     }
 
     @FXML
-    private void initialize() throws Exception {
+    private void initialize() {
 
-        window.addEventHandler(MouseEvent.MOUSE_PRESSED, new EventHandler<MouseEvent>() {
-            @Override
-            public void handle(MouseEvent event) {
-                xOffset = stage.getX() - event.getScreenX();
-                yOffset = stage.getY() - event.getScreenY();
+        window.addEventHandler(MouseEvent.MOUSE_PRESSED, event -> {
+            xOffset = stage.getX() - event.getScreenX();
+            yOffset = stage.getY() - event.getScreenY();
+        });
+
+        window.addEventHandler(MouseEvent.MOUSE_DRAGGED, event -> {
+            stage.setX(event.getScreenX() + xOffset);
+            stage.setY(event.getScreenY() + yOffset);
+        });
+
+        autoPlayIcon.selectedProperty().addListener((observable, oldValue, newValue) -> isRepeat = newValue);
+
+        showPlaylist.addEventHandler(MouseEvent.MOUSE_CLICKED, event -> {
+            if(playlistNode.isVisible()) {
+                hideTransition(playlistNode);
+            }
+            else {
+                showTransition(playlistNode);
             }
         });
 
-        window.addEventHandler(MouseEvent.MOUSE_DRAGGED, new EventHandler<MouseEvent>() {
-            @Override
-            public void handle(MouseEvent event) {
-                stage.setX(event.getScreenX() + xOffset);
-                stage.setY(event.getScreenY() + yOffset);
-            }
-        });
+        minimize.addEventHandler(MouseEvent.MOUSE_CLICKED, event -> stage.setIconified(true));
 
-        autoPlayIcon.addEventHandler(MouseEvent.MOUSE_CLICKED, new EventHandler<MouseEvent>() {
-            @Override
-            public void handle(MouseEvent event) {
-                if(isAutoplay) {
-                    autoPlayIcon.setSelected(false);
-                    isAutoplay = false;
-                }
-                else if(!isAutoplay) {
-                    autoPlayIcon.setSelected(true);
-                    isAutoplay = true;
-                }
-            }
-        });
-
-        showPlaylist.addEventHandler(MouseEvent.MOUSE_CLICKED, new EventHandler<MouseEvent>() {
-            @Override
-            public void handle(MouseEvent event) {
-                if(playlistNode.isVisible() == true) {
-                    hideTransition(playlistNode);
-                }
-                else {
-                    showTransition(playlistNode);
-                }
-            }
-        });
-
-        minimize.addEventHandler(MouseEvent.MOUSE_CLICKED, new EventHandler<MouseEvent>() {
-            @Override
-            public void handle(MouseEvent event) {
-                stage.setIconified(true);
-            }
-        });
-
-        exit.addEventHandler(MouseEvent.MOUSE_CLICKED, new EventHandler<MouseEvent>() {
-            @Override
-            public void handle(MouseEvent event) {
-                System.exit(0);
-            }
-        });
+        exit.addEventHandler(MouseEvent.MOUSE_CLICKED, event -> System.exit(0));
 
         idColumn.setCellValueFactory(cellData -> cellData.getValue().idProperty());
         artistNameColumn.setCellValueFactory(cellData -> cellData.getValue().artistNameProperty());
         songNameColumn.setCellValueFactory(cellData -> cellData.getValue().songNameProperty());
+        sizeColumn.setCellValueFactory(cellData -> cellData.getValue().sizeProperty());
         durationColumn.setCellValueFactory(cellData -> cellData.getValue().durationProperty());
-        rateColumn.setCellValueFactory(cellData -> cellData.getValue().rateProperty());
-        formatColumn.setCellValueFactory(cellData -> cellData.getValue().formatProperty());
+        albumColumn.setCellValueFactory(cellData -> cellData.getValue().albumProperty());
 
-        showSongInfo(null);
-
+        songTable.setItems(songs);
         songTable.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, newValue) -> showSongInfo(newValue));
 
-        folderChooser.addEventHandler(MouseEvent.MOUSE_CLICKED, new EventHandler<MouseEvent>() {
-            @Override
-            public void handle(MouseEvent event) {
-                DirectoryChooser chooser = new DirectoryChooser();
-                File selectedDirectory = chooser.showDialog(stage);
-                if(selectedDirectory == null) {
-                    System.out.println("No directory selected!");
+        // Clicking a row loads that song; clicks on empty space or the header do nothing
+        songTable.setRowFactory(table -> {
+            TableRow<Song> row = new TableRow<>();
+            row.setOnMouseClicked(e -> {
+                if(!row.isEmpty() && e.getClickCount() == 1) {
+                    loadSong(row.getIndex(), false);
                 }
-                else {
+            });
+            return row;
+        });
 
-                    try {
-                        if(!(players.isEmpty())) {
-                            players.clear();
-                            System.out.println("new array list");
-                        }
-                        songTable.setItems(songsUrls(selectedDirectory));
+        showSongInfo(null);
+        setImage();
 
-                        songTable.setOnMouseClicked((MouseEvent e) -> {
-                            if((e.getClickCount() > 0) && (e.getClickCount() < 2)) {
-                                try {
-                                    takeCare();
-                                }
-                                catch (Exception ex) {};
-                            }
-                        });
-                    }
-                    catch(Exception e) {}
+        folderChooser.addEventHandler(MouseEvent.MOUSE_CLICKED, event -> {
+            DirectoryChooser chooser = new DirectoryChooser();
+            File selectedDirectory = chooser.showDialog(stage);
+            if(selectedDirectory == null) {
+                System.out.println("No directory selected!");
+            }
+            else {
+                openFolder(selectedDirectory);
+            }
+        });
+
+        playButton.addEventHandler(MouseEvent.MOUSE_CLICKED, event -> play());
+
+        pauseButton.addEventHandler(MouseEvent.MOUSE_CLICKED, event -> {
+            if((mediaPlayer != null) && (mediaPlayer.getStatus() == MediaPlayer.Status.PLAYING)) {
+                mediaPlayer.pause();
+            }
+            showPlayButton();
+        });
+
+        nextSongButton.addEventHandler(MouseEvent.MOUSE_CLICKED, event -> {
+            if(mediaPlayer != null) {
+                boolean wasPlaying = mediaPlayer.getStatus() == MediaPlayer.Status.PLAYING;
+                loadSong((currentIndex + 1) % songs.size(), wasPlaying);
+            }
+        });
+
+        previousSongButton.addEventHandler(MouseEvent.MOUSE_CLICKED, event -> {
+            if(mediaPlayer != null) {
+                mediaPlayer.seek(Duration.ZERO);
+            }
+        });
+
+        // Seek when the user lets go of the song slider (after a click on the track or a thumb drag)
+        songSlider.addEventHandler(MouseEvent.MOUSE_RELEASED, event -> {
+            if(mediaPlayer != null) {
+                Duration total = mediaPlayer.getTotalDuration();
+                if((total != null) && !total.isUnknown() && !total.isIndefinite()) {
+                    mediaPlayer.seek(total.multiply(songSlider.getValue() / 100));
                 }
             }
+        });
+        songSlider.setValueFactory(slider ->
+                Bindings.createStringBinding(
+                        () -> secToMin((long) sliderTime().toSeconds()),
+                        songSlider.valueProperty()
+                )
+        );
+        songSlider.setValue(0);
+
+        volumeSlider.setValue(volume * 100);
+        volumeValue.setText(String.valueOf((int) volumeSlider.getValue()));
+        volumeIconChanger();
+        volumeSlider.valueProperty().addListener((observable, oldValue, newValue) -> {
+            volume = newValue.doubleValue() / 100;
+            if(mediaPlayer != null) {
+                mediaPlayer.setVolume(volume);
+            }
+            volumeValue.setText(String.valueOf(newValue.intValue()));
+            volumeIconChanger();
         });
     }
 
@@ -243,7 +241,7 @@ public class Controller {
         if(song != null) {
             artistName.setText(song.getArtistName());
             songName.setText(song.getSongName());
-            albumName.setText(song.getFormat());
+            albumName.setText(song.getAlbum());
         }
         else {
             artistName.setText("-");
@@ -253,163 +251,160 @@ public class Controller {
 
     }
 
-    public ObservableList<Song> songsUrls(File dir)   throws Exception{
-        ObservableList<Song> songData = FXCollections.observableArrayList();
-        File[] files = dir.listFiles();
-        String name;
-        int i = 0;
-        for(File file : files) {
-            if(file.isFile()) {
-                name = file.getName();
-                /*if(name.endsWith("jpg")) {
-                    path = file.getAbsolutePath();
-                }*/
-                if(name.endsWith("mp3") || name.endsWith("wav")) {
-                    try {
-                        i++;
-                        Mp3File mp3 = new Mp3File(file.getPath());
-                        ID3v2 tag = mp3.getId3v2Tag();
-                        Song song = new Song(String.valueOf(i), tag.getArtist(), tag.getTitle(), kbToMb(file.length()), secToMin(mp3.getLengthInSeconds()),tag.getAlbum(), file.getAbsolutePath());
-                        players.add(createPlayer(file.getAbsolutePath()));
-                        songData.add(song);
-                    }
-                    catch(IOException e) {e.printStackTrace();}
-                }
-            }
-        }
-        setImage();
-        i = 0;
-        System.out.println(players.size());
-        songsCounter.setText("");
-        songsCounter.setText("Songs: " + players.size());
-        return  songData;
+    private void openFolder(File dir) {
+        disposePlayer();
+        currentIndex = -1;
+        songs.setAll(readSongs(dir));
+        showPlayButton();
+        showSongInfo(null);
+        currentDuration.setText(secToMin(0));
+        totalDuration.setText(secToMin(0));
+        songSlider.setValue(0);
+        songsCounter.setText("Songs: " + songs.size());
     }
 
-    public void playPauseSong(Song song) throws Exception{
-        if(song != null) {
-            File file = new File(song.getUrl());
-            String path = file.getAbsolutePath();
-            path.replace("\\", "/");
-
-            if((mediaView != null) && (mediaPlayer != null)) {
-                volume = mediaView.getMediaPlayer().getVolume();
-                mediaView.getMediaPlayer().stop();
-                mediaView = null;
-                mediaPlayer = null;
+    public ObservableList<Song> readSongs(File dir) {
+        ObservableList<Song> songData = FXCollections.observableArrayList();
+        File[] files = dir.listFiles();
+        if(files == null) {
+            System.out.println("Cannot read directory " + dir);
+            return songData;
+        }
+        int i = 0;
+        for(File file : files) {
+            String name = file.getName().toLowerCase();
+            if(file.isFile() && (name.endsWith(".mp3") || name.endsWith(".wav"))) {
+                i++;
+                songData.add(readSong(file, i));
             }
+        }
+        return songData;
+    }
 
-            Media media = new Media(new File(path).toURI().toString());
+    private Song readSong(File file, int id) {
+        String artist = null;
+        String title = null;
+        String album = null;
+        String duration = "";
 
-            mediaPlayer = new MediaPlayer(media);
-            mediaPlayer.stop();
-            mediaPlayer.setAutoPlay(false);
-
-            mediaView = new MediaView(mediaPlayer);
-            pauseIcon();
-            mediaView = new MediaView(players.get(Integer.parseInt(song.getId()) - 1));
-
-            volumeValue.setText(String.valueOf((int)volumeSlider.getValue()));
-            volumeSlider.setValue(volume * 100);
-            mediaView.getMediaPlayer().setVolume(volume);
-            mediaView.getMediaPlayer().seek(Duration.ZERO);
-            updateSliderPosition(Duration.ZERO);
-
-            updateValues();
-            mediaView.mediaPlayerProperty().addListener(new ChangeListener<MediaPlayer>() {
-                @Override
-                public void changed(ObservableValue<? extends MediaPlayer> observable, MediaPlayer oldValue, MediaPlayer newValue) {
-                    try {
-                        setCurrentlyPlayer(newValue);
-                        updateValues();
-                    }
-                    catch(IOException e) {}
-                    catch(UnsupportedTagException e) {}
-                    catch(InvalidDataException e) {}
+        if(file.getName().toLowerCase().endsWith(".mp3")) {
+            try {
+                Mp3File mp3 = new Mp3File(file.getPath());
+                ID3v1 tag = mp3.hasId3v2Tag() ? mp3.getId3v2Tag() : mp3.getId3v1Tag();
+                if(tag != null) {
+                    artist = tag.getArtist();
+                    title = tag.getTitle();
+                    album = tag.getAlbum();
                 }
-            });
-
-
-            playButton.addEventHandler(MouseEvent.MOUSE_CLICKED, new EventHandler<MouseEvent>() {
-                @Override
-                public void handle(MouseEvent event) {
-                    mediaView.getMediaPlayer().play();
-                    playIcon();
-                    updateValues();
-                    for (int i = ((players.indexOf(mediaView.getMediaPlayer())) % players.size()); i < players.size(); i++) {
-                        final MediaPlayer player = players.get(i);
-                        mediaPlayer = player;
-                        final MediaPlayer nextPlayer = players.get((i + 1) % players.size());
-                        mediaPlayer.setOnEndOfMedia(new Runnable() {
-                            @Override
-                            public void run() {
-                                mediaView.getMediaPlayer().stop();
-                                mediaView.getMediaPlayer().seek(Duration.ZERO);
-                                if(isAutoplay) {
-                                    mediaView.getMediaPlayer().seek(Duration.ZERO);
-                                    repeatSongs();
-                                    return;
-                                }
-                                mediaPlayer = nextPlayer;
-                                mediaView.setMediaPlayer(mediaPlayer);
-                                mediaView.getMediaPlayer().seek(Duration.ZERO);
-                                updateSliderPosition(Duration.ZERO);
-                                songSlider.setValue(0);
-                                updateValues();
-                                mediaPlayer.setVolume(volume);
-                                mediaPlayer.play();
-                                playIcon();
-                            }
-                        });
-                        pauseSong();
-                    }
-                }
-            });
-
-            nextSongButton.addEventHandler(MouseEvent.MOUSE_CLICKED, new EventHandler<MouseEvent>() {
-                @Override
-                public void handle(MouseEvent event) {
-                    seekAndUpdate(players.get(players.indexOf(mediaView.getMediaPlayer())).getTotalDuration());
-                }
-            });
-
-            previousSongButton.addEventHandler(MouseEvent.MOUSE_CLICKED, new EventHandler<MouseEvent>() {
-                @Override
-                public void handle(MouseEvent event) {
-                    seekAndUpdate(Duration.ZERO);
-                }
-            });
-
-
-
-            songSlider.addEventHandler(MouseEvent.MOUSE_PRESSED, new EventHandler<MouseEvent>() {
-                @Override
-                public void handle(MouseEvent event) {
-                    Bounds b1 = songSlider.getLayoutBounds();
-                    double mouseX = event.getX();
-                    double percent = (((b1.getMinX() + mouseX) * 100) / (b1.getMaxX() - b1.getMinX()));
-                    songSlider.setValue((percent) / 100);
-                    seekAndUpdate(new Duration(mediaView.getMediaPlayer().getTotalDuration().toMillis() * percent / 100));
-                    songSlider.setValueFactory(slider ->
-                            Bindings.createStringBinding(
-                                    () -> (secToMin((long) mediaView.getMediaPlayer().getCurrentTime().toSeconds())),
-                                    songSlider.valueProperty()
-                            )
-                    );
-                }
-            });
-
+                duration = secToMin(mp3.getLengthInSeconds());
+            }
+            catch(Exception e) {
+                System.out.println("Cannot read tags of " + file + ": " + e);
+            }
         }
         else {
-            if(pauseButton.isVisible()) {
-                if ((mediaPlayer != null) && (mediaView != null)) {
-                    mediaPlayer = mediaView.getMediaPlayer();
-                    mediaPlayer.stop();
-                    mediaView = null;
-                    mediaPlayer = null;
+            try {
+                AudioFileFormat format = AudioSystem.getAudioFileFormat(file);
+                float frameRate = format.getFormat().getFrameRate();
+                if((format.getFrameLength() > 0) && (frameRate > 0)) {
+                    duration = secToMin((long) (format.getFrameLength() / frameRate));
                 }
-                pauseIcon();
             }
-            System.out.println("Song does not exist!");
+            catch(Exception e) {
+                System.out.println("Cannot read format of " + file + ": " + e);
+            }
+        }
+
+        if((title == null) || title.trim().isEmpty()) {
+            title = file.getName().substring(0, file.getName().lastIndexOf('.'));
+        }
+        return new Song(String.valueOf(id), artist, title, kbToMb(file.length()), duration, album, file.getAbsolutePath());
+    }
+
+    private void loadSong(int index, boolean autoPlay) {
+        if((index < 0) || (index >= songs.size())) {
+            return;
+        }
+        disposePlayer();
+
+        Song song = songs.get(index);
+        currentIndex = index;
+        songTable.getSelectionModel().select(index);
+        showSongInfo(song);
+        showPlayButton();
+        currentDuration.setText(secToMin(0));
+        totalDuration.setText(song.getDuration().isEmpty() ? secToMin(0) : song.getDuration());
+        songSlider.setValue(0);
+
+        MediaPlayer player;
+        try {
+            player = new MediaPlayer(new Media(new File(song.getUrl()).toURI().toString()));
+        }
+        catch(MediaException e) {
+            System.out.println("Cannot play " + song.getUrl() + ": " + e.getMessage());
+            return;
+        }
+        mediaPlayer = player;
+        player.setVolume(volume);
+
+        // Every handler ignores events still queued for a player that has since been replaced
+        player.setOnReady(() -> {
+            if(player == mediaPlayer) {
+                totalDuration.setText(secToMin((long) player.getTotalDuration().toSeconds()));
+            }
+        });
+
+        player.currentTimeProperty().addListener((observable, oldValue, newValue) -> {
+            if(player != mediaPlayer) {
+                return;
+            }
+            currentDuration.setText(secToMin((long) newValue.toSeconds()));
+            if(!songSlider.isValueChanging() && !songSlider.isPressed()) {
+                updateSliderPosition(newValue);
+            }
+        });
+
+        player.setOnEndOfMedia(() -> {
+            if(player != mediaPlayer) {
+                return;
+            }
+            if(isRepeat) {
+                player.seek(Duration.ZERO);
+                player.play();
+            }
+            else {
+                loadSong((currentIndex + 1) % songs.size(), true);
+            }
+        });
+
+        player.setOnError(() -> {
+            System.out.println("Cannot play " + song.getUrl() + ": " + player.getError());
+            if(player == mediaPlayer) {
+                showPlayButton();
+            }
+        });
+
+        if(autoPlay) {
+            play();
+        }
+    }
+
+    private void play() {
+        if(mediaPlayer == null) {
+            int selected = songTable.getSelectionModel().getSelectedIndex();
+            loadSong(selected >= 0 ? selected : 0, false);
+        }
+        if(mediaPlayer != null) {
+            mediaPlayer.play();
+            showPauseButton();
+        }
+    }
+
+    private void disposePlayer() {
+        if(mediaPlayer != null) {
+            // dispose() also stops playback; calling stop() first would queue a late stop event
+            mediaPlayer.dispose();
+            mediaPlayer = null;
         }
     }
 
@@ -419,135 +414,54 @@ public class Controller {
 
 
     public String kbToMb(long length) {
-        Long l = length;
-        double d = l.doubleValue();
-        DecimalFormat df = new DecimalFormat("#.00");
-        String form = df.format((d/1024)/1024);
-        return form + "Mb";
+        DecimalFormat df = new DecimalFormat("0.00");
+        return df.format(((double) length / 1024) / 1024) + "Mb";
     }
 
     public String secToMin(long sec) {
-        Long s = sec;
-        String time = null;
-        if((s%60) < 10) {
-            time = s/60 + ":0" + s%60;
+        String time;
+        if((sec % 60) < 10) {
+            time = sec / 60 + ":0" + sec % 60;
         }
         else {
-            time = s/60 + ":" + s%60;
+            time = sec / 60 + ":" + sec % 60;
         }
         return time;
     }
 
-    public MediaPlayer createPlayer(String url) {
-        url.replace("\\", "/");
-        final Media media = new Media(new File(url).toURI().toString());
-        final MediaPlayer player = new MediaPlayer(media);
-        System.out.println("+++++ " + url);
-        return player;
-    }
-
-    public Media createMedia(String url) {
-        url.replace("\\", "/");
-        final Media media = new Media(new File(url).toURI().toString());
-        return media;
-    }
-
-    public void playIcon() {
+    public void showPauseButton() {
         playButton.setVisible(false);
         playButton.setDisable(true);
         pauseButton.setVisible(true);
         pauseButton.setDisable(false);
     }
 
-    public void pauseIcon() {
+    public void showPlayButton() {
         pauseButton.setVisible(false);
         pauseButton.setDisable(true);
         playButton.setVisible(true);
         playButton.setDisable(false);
     }
 
-    public void setCurrentlyPlayer(MediaPlayer player) throws InvalidDataException, IOException, UnsupportedTagException {
-        String source = player.getMedia().getSource();
-        source = source.replace("/","\\");
-        source = source.replaceAll("%20", " ");
-        source = source.replaceAll("%5B", "[");
-        source = source.replaceAll("%5D", "]");
-        source = source.substring(6,source.length());
-        System.out.println(source + " +++");
-        Mp3File mp3 = new Mp3File(source);
-        ID3v2 tag = mp3.getId3v2Tag();
-        artistName.setText(tag.getArtist());
-        songName.setText(tag.getTitle());
-        albumName.setText(tag.getAlbum());
-    }
-
-    public void takeCare() throws Exception {
-        if(songTable.getSelectionModel().getSelectedItem() != null) {
-            Song song = songTable.getSelectionModel().getSelectedItem();
-            playPauseSong(song);
+    private Duration sliderTime() {
+        if(mediaPlayer == null) {
+            return Duration.ZERO;
         }
-        else {
-            System.out.println("null");
+        Duration total = mediaPlayer.getTotalDuration();
+        if((total == null) || total.isUnknown() || total.isIndefinite()) {
+            return Duration.ZERO;
         }
-    }
-
-    private void seekAndUpdate(Duration duration) {
-        final MediaPlayer player = players.get(players.indexOf(mediaView.getMediaPlayer()));
-
-        player.seek(duration);
-    }
-
-    private void updateValues() {
-        Thread thread = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                do {
-                    Platform.runLater(new Runnable() {
-                        @Override
-                        public void run() {
-                            final MediaPlayer player = mediaView.getMediaPlayer();
-                            if((player.getStatus() != Status.PAUSED) && (player.getStatus() != Status.STOPPED) && (player.getStatus() != Status.READY)) {
-                                double tduration = player.getTotalDuration().toSeconds();
-                                totalDuration.setText(secToMin((long) tduration));
-                                currentDuration.setText(secToMin((long) player.getCurrentTime().toSeconds()));
-                                updateSliderPosition(player.getCurrentTime());
-                                volumeHandler();
-                            }
-                        }
-                    });
-                    try {
-                        Thread.sleep(100);
-                    } catch (InterruptedException ex) {
-                        break;
-                    }
-                }
-                while(!players.isEmpty());
-            }
-        });
-        thread.start();
+        return total.multiply(songSlider.getValue() / 100);
     }
 
     private void updateSliderPosition(Duration currentTime) {
-        final MediaPlayer player = mediaView.getMediaPlayer();
-        final Duration totalDuration = player.getTotalDuration();
-        if((totalDuration == null) || (currentTime == null)) {
+        final Duration total = mediaPlayer.getTotalDuration();
+        if((total == null) || (currentTime == null) || total.isUnknown() || total.isIndefinite() || (total.toMillis() <= 0)) {
             songSlider.setValue(0);
         }
         else {
-            songSlider.setValue((currentTime.toMillis() / totalDuration.toMillis()) * 100);
+            songSlider.setValue((currentTime.toMillis() / total.toMillis()) * 100);
         }
-    }
-
-    private void volumeHandler() {
-        volumeSlider.valueProperty().addListener(new InvalidationListener() {
-            @Override
-            public void invalidated(Observable observable) {
-                mediaView.getMediaPlayer().setVolume(volumeSlider.getValue() / 100);
-                volumeValue.setText(String.valueOf((int)volumeSlider.getValue()));
-                volume = mediaView.getMediaPlayer().getVolume();
-                volumeIconChanger();
-            }
-        });
     }
 
     private void volumeIconChanger() {
@@ -578,48 +492,12 @@ public class Controller {
         transitionOperation(anchorPane, fadeOut, false);
     }
 
-    private void setImage() throws Exception {
-        String path = "";
-        path = path.replace("\\", "/");
-        path = path.replace(" ", "%20");
-        //path = "file:/" + path;
-        path = ClassLoader.getSystemResource("images/Question.PNG").toExternalForm();
-        System.out.println(path);
+    private void setImage() {
+        String path = ClassLoader.getSystemResource("images/Question.PNG").toExternalForm();
 
         imagePane.setStyle("-fx-background-image: url(\"" + path + "\"); " +
                 "-fx-background-position: center center; " +
                 "-fx-background-repeat: stretch;");
 
     }
-
-    private void repeatSongs(){
-        mediaView.getMediaPlayer().setOnRepeat(new Runnable() {
-            @Override
-            public void run() {
-                mediaView.getMediaPlayer().seek(Duration.ZERO);
-            }
-        });
-        if(isAutoplay) {
-            mediaView.getMediaPlayer().play();
-            playIcon();
-        }
-        else return;
-    }
-
-    private void pauseSong() {
-        mediaView.getMediaPlayer().setAutoPlay(true);
-        pauseButton.addEventHandler(MouseEvent.MOUSE_CLICKED, new EventHandler<MouseEvent>() {
-            @Override
-            public void handle(MouseEvent event) {
-                if (mediaView.getMediaPlayer().getStatus() == MediaPlayer.Status.PLAYING) {
-                    mediaView.getMediaPlayer().pause();
-                    pauseButton.setVisible(false);
-                    pauseButton.setDisable(true);
-                    playButton.setVisible(true);
-                    playButton.setDisable(false);
-                }
-            }
-        });
-    }
 }
-

@@ -49,19 +49,19 @@
                                           <String fx:value="column-header" />
                                           <String fx:value="filler" />
                                        </styleClass></TableColumn>
-                                    <TableColumn fx:id="durationColumn" prefWidth="73.0" text="Width">
+                                    <TableColumn fx:id="sizeColumn" prefWidth="73.0" text="Size">
                                        <styleClass>
                                           <String fx:value="column-header-background" />
                                           <String fx:value="column-header" />
                                           <String fx:value="filler" />
                                        </styleClass></TableColumn>
-                                    <TableColumn fx:id="rateColumn" prefWidth="76.0" text="Length">
+                                    <TableColumn fx:id="durationColumn" prefWidth="76.0" text="Length">
                                        <styleClass>
                                           <String fx:value="column-header-background" />
                                           <String fx:value="column-header" />
                                           <String fx:value="filler" />
                                        </styleClass></TableColumn>
-                                    <TableColumn fx:id="formatColumn" prefWidth="142.0" text="Album">
+                                    <TableColumn fx:id="albumColumn" prefWidth="142.0" text="Album">
                                        <styleClass>
                                           <String fx:value="column-header-background" />
                                           <String fx:value="column-header" />
